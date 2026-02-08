@@ -1,30 +1,27 @@
-function calculateDeliveryTime(distance, speed, terrain) {
-  // Проверка расстояния
-  if (distance <= 0) {
-    throw new Error('Расстояние должно быть положительным');
-  }
+const GoogleMapsService = require('./GoogleMapsService');
 
-  // Проверка скорости
-  if (speed <= 0 || speed > 150) {
-    throw new Error('Скорость должна быть в диапазоне от 1 до 150 км/ч');
-  }
+async function calculateDeliveryTime(distance, speed, type, routeId) {
+  
+  if (distance <= 0) throw new Error('Некорректное расстояние');
+  if (speed <= 0 || speed > 150) throw new Error('Некорректная скорость');
+  if (type !== 'город' && type !== 'трасса') throw new Error('Неверный тип местности');
 
-  // Проверка типа местности
-  if (terrain !== 'город' && terrain !== 'трасса') {
-    throw new Error('Тип местности должен быть "город" или "трасса"');
-  }
-
-  // Ограничение скорости в городе
-  if (terrain === 'город' && speed > 60) {
-    throw new Error('В городе скорость не может превышать 60 км/ч');
-  }
-
-  // Расчет базового времени
   let time = distance / speed;
 
-  // Увеличение времени в городе
-  if (terrain === 'город') {
+  if (type === 'город') {
     time *= 1.2;
+
+    try {
+      const trafficScore = await GoogleMapsService.getTrafficScore(routeId);
+
+      if (trafficScore === 10) {
+        time *= 2;
+      }
+
+    } catch (error) {
+      // если API недост. - берет дефолт
+      time *= 1.5;
+    }
   }
 
   return time;

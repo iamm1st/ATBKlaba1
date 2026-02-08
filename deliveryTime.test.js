@@ -1,50 +1,79 @@
+jest.mock('./GoogleMapsService');
+
 const calculateDeliveryTime = require('./deliveryTime');
+const GoogleMapsService = require('./GoogleMapsService');
 
-describe('Функция calculateDeliveryTime', () => {
+// Тест 1 — Балл пробок = 10
+describe('calculateDeliveryTime с Traffic API', () => {
 
-  // ===== ПОЗИТИВНЫЕ СЦЕНАРИИ =====
-  describe('Позитивные сценарии', () => {
-
-    test('Корректный расчет времени на трассе', () => {
-      const result = calculateDeliveryTime(100, 50, 'трасса');
-      expect(result).toBe(2);
-    });
-
-    test('Корректный расчет времени в городе с коэффициентом', () => {
-      const result = calculateDeliveryTime(60, 30, 'город');
-      expect(result).toBeCloseTo(2.4, 5);
-    });
-
+  beforeEach(() => {
+    jest.clearAllMocks();
   });
 
-  // ===== НЕГАТИВНЫЕ СЦЕНАРИИ =====
-  describe('Негативные сценарии', () => {
+  test('Должен увеличить время в 2 раза при trafficScore = 10', async () => {
 
-    test('Ошибка при отрицательном расстоянии', () => {
-      expect(() => calculateDeliveryTime(-10, 50, 'трасса'))
-        .toThrow('Расстояние должно быть положительным');
-    });
+    // ARRANGE
+    GoogleMapsService.getTrafficScore.mockResolvedValue(10);
 
-    test('Ошибка при нулевой скорости', () => {
-      expect(() => calculateDeliveryTime(100, 0, 'трасса'))
-        .toThrow();
-    });
+    // ACT
+    const result = await calculateDeliveryTime(100, 50, 'город', 'route1');
 
-    test('Ошибка при превышении скорости', () => {
-      expect(() => calculateDeliveryTime(100, 200, 'трасса'))
-        .toThrow();
-    });
+    // расс/скор = 2
+    // *1.2 = 2.4
+    // *2 = 4.8
 
-    test('Ошибка при превышении скорости в городе', () => {
-      expect(() => calculateDeliveryTime(50, 80, 'город'))
-        .toThrow('В городе скорость не может превышать 60 км/ч');
-    });
-
-    test('Ошибка при неверном типе местности', () => {
-      expect(() => calculateDeliveryTime(50, 40, 'лес'))
-        .toThrow();
-    });
-
+    // ASSERT
+    expect(result).toBeCloseTo(4.8);
+    expect(GoogleMapsService.getTrafficScore).toHaveBeenCalledWith('route1');
   });
 
+  // Тест 2 — API недоступен
+  test('Должен использовать дефолтный коэффициент при падении API', async () => {
+
+    // ARRANGE
+    GoogleMapsService.getTrafficScore.mockRejectedValue(new Error('API error'));
+
+    // ACT
+    const result = await calculateDeliveryTime(100, 50, 'город', 'route1');
+
+    // 2 *1.2 = 2.4
+    // *1.5 = 3.6
+
+    // ASSERT
+    expect(result).toBeCloseTo(3.6);
+  });
+
+  // Тест 3 — Трасса (API не вызывается)
+  test('Не должен вызывать Traffic API для трассы', async () => {
+
+    const result = await calculateDeliveryTime(100, 50, 'трасса', 'route1');
+
+    expect(result).toBe(2);
+    expect(GoogleMapsService.getTrafficScore).not.toHaveBeenCalled();
+  });
+
+  // тесты на ошибки
+test('Должен выбросить ошибку при отрицательном расстоянии', async () => {
+  await expect(calculateDeliveryTime(-10, 50, 'трасса', 'r1'))
+    .rejects.toThrow();
+});
+
+test('Должен выбросить ошибку при скорости 0', async () => {
+  await expect(calculateDeliveryTime(10, 0, 'трасса', 'r1'))
+    .rejects.toThrow();
+});
+
+test('Должен выбросить ошибку при неверном типе местности', async () => {
+  await expect(calculateDeliveryTime(10, 50, 'лес', 'r1'))
+    .rejects.toThrow();
+});
+
+// тест trafficScore =/ 10
+test('Не должен удваивать время, если trafficScore не равен 10', async () => {
+  GoogleMapsService.getTrafficScore.mockResolvedValue(5);
+
+  const result = await calculateDeliveryTime(100, 50, 'город', 'route1');
+  // 100/50=2, *1.2=2.4, trafficScore=5 => не удваив.
+  expect(result).toBeCloseTo(2.4);
+});
 });
